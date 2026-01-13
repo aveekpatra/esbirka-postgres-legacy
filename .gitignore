@@ -1,0 +1,30 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.env
+.venv
+env/
+venv/
+
+# Logs
+*.log
+logs/
+
+# Backup files - DO NOT commit these!
+backups/
+backups/*.sql
+backups/*.sql.gz
+backups/*.dump
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
