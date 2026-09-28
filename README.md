@@ -1,106 +1,65 @@
-# E-Sbírka PostgreSQL for Railway
+# E-Sbirka Postgres restore
 
-PostgreSQL database deployment for E-Sbírka legal document system with pgvector embeddings.
+> Legacy: this was part of an earlier version of the Aturno (Lexio) stack and is no longer in use. It is kept for reference.
 
-## Quick Start
+Scripts to load a gzip-compressed SQL backup of the E-Sbirka legal database (Czech laws and court judgments with pgvector embeddings) into a PostgreSQL instance on Railway, then check that the restore is complete.
 
-### 1. Create Railway PostgreSQL
+## Stack
 
-1. Go to [Railway.app](https://railway.app)
-2. Create a new project
-3. Add **PostgreSQL** plugin (not MySQL!)
-4. Copy the `DATABASE_URL` from the plugin settings
+- Python 3
+- PostgreSQL with the `vector` (pgvector) and `pg_trgm` extensions
+- `psql` client, asyncpg, python-dotenv
 
-### 2. Configure Environment
+## Getting started
 
-```bash
-# Copy example env file
-cp .env.example .env
-
-# Edit .env and paste your Railway DATABASE_URL
-```
-
-### 3. Install Dependencies
+Install the PostgreSQL client so `psql` is on your PATH (for example `brew install postgresql` or `apt install postgresql-client`), then:
 
 ```bash
 pip install -r requirements.txt
-```
-
-### 4. Restore Backup
-
-```bash
-# Ensure psql is installed and in PATH
+cp .env.example .env    # set DATABASE_URL
 python scripts/restore_backup.py
-```
-
-This will:
-- Enable pgvector and pg_trgm extensions
-- Stream the compressed backup to Railway
-- Show progress during restore
-
-### 5. Verify Restore
-
-```bash
 python scripts/verify_restore.py
 ```
 
-## Database Schema
+Environment variables (see `.env.example`):
 
-The database contains:
+- `DATABASE_URL`: connection string of the target PostgreSQL database
+- `LOCAL_DATABASE_URL`: listed in the example file but not read by the scripts
 
-| Table | Description |
-|-------|-------------|
-| `laws` | Legal acts metadata |
-| `versions` | Law version history |
-| `sections` | Law sections/paragraphs |
-| `section_chunks` | Chunked text with embeddings |
+## How it works
+
+`scripts/restore_backup.py`:
+
+1. Looks for the newest `esbirka_laws_*.sql.gz` in `../E-sbirka integration/database/backups/` (a folder outside this repo, about 27 GB compressed).
+2. Runs `schema/01_extensions.sql` to enable `vector` and `pg_trgm`.
+3. Asks for confirmation, then streams the decompressed backup into `psql` in 64 KB chunks, printing progress and ETA every 10 seconds.
+
+`scripts/verify_restore.py` connects with asyncpg, prints the server version and installed extensions, counts rows in each expected table and checks how many `section_chunks` have embeddings.
+
+## Database tables
+
+| Table | Contents |
+| --- | --- |
+| `laws` | Legal act metadata |
+| `versions` | Version history of each act |
+| `sections` | Sections and paragraphs |
+| `section_chunks` | Chunked section text with embeddings |
 | `judgments` | Court judgment metadata |
-| `judgment_chunks` | Judgment text chunks with embeddings |
 | `judgment_contents` | Full judgment text |
-| `judgment_law_references` | Links between judgments and laws |
+| `judgment_chunks` | Judgment text chunks with embeddings |
+| `judgment_law_references` | Links from judgments to laws |
 | `definitions` | Legal term definitions |
-| `query_cache` | Search result caching |
+| `query_cache` | Cached search results |
 
-## Required Extensions
+## Project structure
 
-- **pgvector** - Vector similarity search for embeddings
-- **pg_trgm** - Trigram fuzzy text search
-
-Railway's PostgreSQL plugin supports both extensions.
-
-## Environment Variables
-
-```bash
-# Railway PostgreSQL (required)
-DATABASE_URL=postgresql://postgres:xxx@host.railway.internal:5432/railway
-
-# For Backend connection
-POSTGRES_HOST=roundhouse.proxy.rlwy.net
-POSTGRES_PORT=12345
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=xxx
-POSTGRES_DB=railway
+```
+schema/01_extensions.sql   Extensions to enable before the restore
+scripts/restore_backup.py  Streams the backup into PostgreSQL
+scripts/verify_restore.py  Checks tables, row counts and embeddings
+railway.json               Railway service config
 ```
 
-## Backup Information
+## Deployment
 
-- **Format**: gzip-compressed SQL
-- **Location**: `../E-sbirka integration/database/backups/`
-- **Size**: ~27 GB compressed
-
-## Troubleshooting
-
-### psql not found
-Install PostgreSQL client:
-- **Windows**: Install PostgreSQL, add `bin` folder to PATH
-- **Mac**: `brew install postgresql`
-- **Linux**: `apt install postgresql-client`
-
-### Connection timeout
-- Check your Railway DATABASE_URL is correct
-- Ensure your IP is not blocked by Railway firewall
-- Try using the external proxy URL instead of internal
-
-### Extension errors
-If pgvector fails to create, your Railway PostgreSQL version may not support it.
-Contact Railway support or use a higher tier plan.
+The database itself is a Railway PostgreSQL service. `railway.json` only starts a placeholder `python -m http.server $PORT` so the repo can be deployed as a service; the restore is run from a local machine.
